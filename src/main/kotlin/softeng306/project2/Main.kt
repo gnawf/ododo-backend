@@ -6,7 +6,9 @@ import spark.Spark.webSocket
 import spark.kotlin.port
 
 fun main(vararg args: String) {
-  port(8080)
+  val port = System.getenv("PORT").toInt()
+
+  port(port)
 
   webSocket("/play", Multiplayer::class.java)
 
