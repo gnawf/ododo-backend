@@ -7,6 +7,7 @@ import org.eclipse.jetty.websocket.api.annotations.OnWebSocketClose
 import org.eclipse.jetty.websocket.api.annotations.OnWebSocketConnect
 import org.eclipse.jetty.websocket.api.annotations.OnWebSocketMessage
 import org.eclipse.jetty.websocket.api.annotations.WebSocket
+import softeng306.project2.forEach
 import softeng306.project2.models.Player
 import softeng306.project2.multiplayer.messages.Chat
 import softeng306.project2.multiplayer.messages.GameSync
@@ -38,8 +39,10 @@ class Multiplayer {
   fun closed(session: Session, statusCode: Int, reason: String) {
     orphans.remove(session)
 
-    val username = sessions.remove(session) ?: return
+    val username = sessions.remove(session) ?: return println("Connection closed")
     players.remove(username)
+
+    println("User disconnected $username")
   }
 
   @OnWebSocketMessage
@@ -84,8 +87,6 @@ class Multiplayer {
     sessions[session] = player.username
     players[player.username] = player
     orphans.remove(session)
-    // Let the user know they have successfully logged in
-    session.remote.sendString("success")
 
     println("Player logged in $player")
   }
@@ -110,11 +111,15 @@ class Multiplayer {
     val sync = GameSync(iteration = 0, players = players.values, chat = messages)
     val message = "sync\n" + gson.toJson(sync)
     // Send to all sessions
-    sessions.keys.forEach { session ->
+    sessions.entries.iterator().forEach { iterator, entry ->
+      val session = entry.key
+      val username = entry.value
       try {
         session.remote.sendStringByFuture(message)
       } catch (e: WebSocketException) {
-        System.exit(1)
+        println("Removing user $username")
+        iterator.remove()
+        players.remove(username)
       }
     }
   }
