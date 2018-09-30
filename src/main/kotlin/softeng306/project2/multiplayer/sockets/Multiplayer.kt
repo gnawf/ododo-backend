@@ -11,6 +11,7 @@ import softeng306.project2.forEach
 import softeng306.project2.models.Player
 import softeng306.project2.multiplayer.messages.ChatMessage
 import softeng306.project2.multiplayer.messages.GameSync
+import softeng306.project2.multiplayer.messages.GetMessages
 
 @WebSocket
 class Multiplayer {
@@ -67,6 +68,7 @@ class Multiplayer {
     when (request) {
       is Player -> update(session, request)
       is ChatMessage -> store(session, request)
+      is GetMessages -> send(session, request)
     }
   }
 
@@ -74,6 +76,7 @@ class Multiplayer {
     val klass = when (type) {
       "player-sync" -> Player::class.java
       "chat-message" -> ChatMessage::class.java
+      "get-messages" -> GetMessages::class.java
       else -> throw UnsupportedOperationException("Unknown message type $type")
     }
 
@@ -93,7 +96,21 @@ class Multiplayer {
       return
     }
 
-    messages += request
+    val lastId = messages.lastOrNull()?.id ?: 0
+    messages += request.copy(id = lastId + 1)
+  }
+
+  private fun send(session: Session, request: GetMessages) {
+    // Grab the messages requested for
+    val startIndex = request.sinceMessageId.minus(1).coerceAtLeast(0)
+    val limit = request.limit.coerceAtMost(20).takeIf { it > 0 } ?: 10
+    val endIndex = startIndex.plus(limit).coerceAtMost(messages.size)
+    val messages = messages.subList(startIndex, endIndex)
+
+    // Send the response
+    val response = request.copy(messages = messages)
+    val payload = "get-messages\n" + gson.toJson(response)
+    session.remote.sendStringByFuture(payload)
   }
 
   private fun login(session: Session, body: String) {
