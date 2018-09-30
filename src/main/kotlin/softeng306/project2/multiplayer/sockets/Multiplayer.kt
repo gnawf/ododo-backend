@@ -15,6 +15,8 @@ import softeng306.project2.multiplayer.messages.GameSync
 @WebSocket
 class Multiplayer {
 
+  private val tickDuration = System.getenv("TICK_DURATION_NANO").toLong()
+
   private val sessions: MutableMap<Session, String> = hashMapOf()
 
   private val players: MutableMap<String, Player> = hashMapOf()
@@ -100,7 +102,7 @@ class Multiplayer {
       tick()
 
       // Sleep for the time remaining in the tick
-      val sleep = 600000000 - (System.nanoTime() - start)
+      val sleep = tickDuration - (System.nanoTime() - start)
       // Make sure to convert back to milliseconds for Thread#sleep
       if (sleep >= 0) Thread.sleep(sleep / 1000000)
     }
