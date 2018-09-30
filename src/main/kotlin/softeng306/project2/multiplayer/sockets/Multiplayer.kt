@@ -9,7 +9,7 @@ import org.eclipse.jetty.websocket.api.annotations.OnWebSocketMessage
 import org.eclipse.jetty.websocket.api.annotations.WebSocket
 import softeng306.project2.forEach
 import softeng306.project2.models.Player
-import softeng306.project2.multiplayer.messages.Chat
+import softeng306.project2.multiplayer.messages.ChatMessage
 import softeng306.project2.multiplayer.messages.GameSync
 
 @WebSocket
@@ -23,6 +23,8 @@ class Multiplayer {
 
   private val orphans: MutableSet<Session> = hashSetOf()
 
+  private val messages: MutableList<ChatMessage> = arrayListOf()
+
   private val gson = Gson()
 
   init {
@@ -32,16 +34,16 @@ class Multiplayer {
 
   @OnWebSocketConnect
   fun connected(session: Session) {
-    orphans.add(session)
+    orphans += session
 
     println("Orphan connected")
   }
 
   @OnWebSocketClose
   fun closed(session: Session, statusCode: Int, reason: String) {
-    orphans.remove(session)
+    orphans -= session
 
-    val username = sessions.remove(session) ?: return println("Connection closed")
+    val username = sessions.remove(session) ?: return println("Orphan connection closed")
     players.remove(username)
 
     println("User disconnected $username")
@@ -64,12 +66,14 @@ class Multiplayer {
 
     when (request) {
       is Player -> update(session, request)
+      is ChatMessage -> store(session, request)
     }
   }
 
   private fun fromJson(type: String, body: String): Any {
     val klass = when (type) {
       "player-sync" -> Player::class.java
+      "chat-message" -> ChatMessage::class.java
       else -> throw UnsupportedOperationException("Unknown message type $type")
     }
 
@@ -81,6 +85,15 @@ class Multiplayer {
     players[username] = player
 
     println("Updated player $player")
+  }
+
+  private fun store(session: Session, request: ChatMessage) {
+    // Unauthorized messages - sender is not who established the session
+    if (sessions[session] != request.owner) {
+      return
+    }
+
+    messages += request
   }
 
   private fun login(session: Session, body: String) {
@@ -95,6 +108,7 @@ class Multiplayer {
 
   private fun ticker() {
     var start: Long
+    var sleep: Long
 
     while (true) {
       start = System.nanoTime()
@@ -102,22 +116,24 @@ class Multiplayer {
       tick()
 
       // Sleep for the time remaining in the tick
-      val sleep = tickDuration - (System.nanoTime() - start)
+      sleep = tickDuration - (System.nanoTime() - start)
       // Make sure to convert back to milliseconds for Thread#sleep
       if (sleep >= 0) Thread.sleep(sleep / 1000000)
     }
   }
 
   private fun tick() {
-    val messages = emptyList<Chat>()
-    val sync = GameSync(iteration = 0, players = players.values, chat = messages)
-    val message = "sync\n" + gson.toJson(sync)
+    val sync = GameSync(
+      players = players.values,
+      lastChatMessageId = messages.lastOrNull()?.id ?: 0
+    )
+    val payload = "sync\n" + gson.toJson(sync)
     // Send to all sessions
     sessions.entries.iterator().forEach { iterator, entry ->
       val session = entry.key
       val username = entry.value
       try {
-        session.remote.sendStringByFuture(message)
+        session.remote.sendStringByFuture(payload)
       } catch (e: WebSocketException) {
         println("Removing user $username")
         iterator.remove()
