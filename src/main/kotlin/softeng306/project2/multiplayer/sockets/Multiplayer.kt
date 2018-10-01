@@ -12,6 +12,7 @@ import softeng306.project2.models.Player
 import softeng306.project2.multiplayer.messages.ChatMessage
 import softeng306.project2.multiplayer.messages.GameSync
 import softeng306.project2.multiplayer.messages.GetMessages
+import java.time.Instant
 
 @WebSocket
 class Multiplayer {
@@ -75,7 +76,7 @@ class Multiplayer {
   private fun fromJson(type: String, body: String): Any {
     val klass = when (type) {
       "player-sync" -> Player::class.java
-      "chat-message" -> ChatMessage::class.java
+      "send-chat-message" -> ChatMessage::class.java
       "get-messages" -> GetMessages::class.java
       else -> throw UnsupportedOperationException("Unknown message type $type")
     }
@@ -91,26 +92,33 @@ class Multiplayer {
   }
 
   private fun store(session: Session, request: ChatMessage) {
-    // Unauthorized messages - sender is not who established the session
-    if (sessions[session] != request.owner) {
-      return
-    }
-
     val lastId = messages.lastOrNull()?.id ?: 0
-    messages += request.copy(id = lastId + 1)
+
+    val message = request.copy(
+      id = lastId + 1,
+      owner = sessions[session] ?: return println("Unable to send chat message due to unknown player"),
+      sentAt = Instant.now().toString()
+    )
+
+    messages += message
+
+    println("Received message $message")
   }
 
   private fun send(session: Session, request: GetMessages) {
     // Grab the messages requested for
-    val startIndex = request.sinceMessageId.minus(1).coerceAtLeast(0)
+    val maxIndex = messages.size.minus(1).coerceAtLeast(0)
+    val start = request.sinceMessageId.coerceIn(0, maxIndex)
     val limit = request.limit.coerceAtMost(20).takeIf { it > 0 } ?: 10
-    val endIndex = startIndex.plus(limit).coerceAtMost(messages.size)
-    val messages = messages.subList(startIndex, endIndex)
+    val end = start.plus(limit).coerceAtMost(messages.size)
+    val messages = messages.subList(start, end)
 
     // Send the response
-    val response = request.copy(messages = messages)
+    val response = request.copy(sinceMessageId = start, limit = limit, messages = messages)
     val payload = "get-messages\n" + gson.toJson(response)
     session.remote.sendStringByFuture(payload)
+
+    println("Sent messages to ${sessions[session]} with payload $payload")
   }
 
   private fun login(session: Session, body: String) {
