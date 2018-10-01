@@ -10,6 +10,7 @@ import org.eclipse.jetty.websocket.api.annotations.WebSocket
 import softeng306.project2.forEach
 import softeng306.project2.models.Player
 import softeng306.project2.multiplayer.messages.ChatMessage
+import softeng306.project2.multiplayer.messages.GameInitialization
 import softeng306.project2.multiplayer.messages.GameSync
 import softeng306.project2.multiplayer.messages.GetMessages
 import java.time.Instant
@@ -37,6 +38,12 @@ class Multiplayer {
   @OnWebSocketConnect
   fun connected(session: Session) {
     orphans += session
+
+    val now = Instant.now().toString()
+    val init = GameInitialization(now, tickDuration)
+    val json = gson.toJson(init)
+    val payload = "init\n$json"
+    session.remote.sendStringByFuture(payload)
 
     println("Orphan connected")
   }
