@@ -14,11 +14,12 @@ import softeng306.project2.multiplayer.messages.GameInitialization
 import softeng306.project2.multiplayer.messages.GameSync
 import softeng306.project2.multiplayer.messages.GetMessages
 import java.time.Instant
+import java.util.concurrent.TimeUnit
 
 @WebSocket
 class Multiplayer {
 
-  private val tickDuration = System.getenv("TICK_DURATION_NANO").toLong()
+  private val tickDurationNano = System.getenv("TICK_DURATION_NANO").toLong()
 
   private val sessions: MutableMap<Session, String> = hashMapOf()
 
@@ -40,7 +41,8 @@ class Multiplayer {
     orphans += session
 
     val now = Instant.now().toString()
-    val init = GameInitialization(now, tickDuration)
+    val tickDurationMillis = TimeUnit.NANOSECONDS.toMillis(tickDurationNano)
+    val init = GameInitialization(now, tickDurationMillis)
     val json = gson.toJson(init)
     val payload = "init\n$json"
     session.remote.sendStringByFuture(payload)
@@ -148,7 +150,7 @@ class Multiplayer {
       tick()
 
       // Sleep for the time remaining in the tick
-      sleep = tickDuration - (System.nanoTime() - start)
+      sleep = tickDurationNano - (System.nanoTime() - start)
       // Make sure to convert back to milliseconds for Thread#sleep
       if (sleep >= 0) Thread.sleep(sleep / 1000000)
     }
